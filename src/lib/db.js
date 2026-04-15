@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { createSessionFromUpload } from './session';
+import { parseSegmentBlob } from './excel';
 
 function workspaceToRow(workspace) {
   return {
@@ -98,6 +100,38 @@ function buildEditorProject(workspaceRow, projectRow, segmentRows) {
   };
 }
 
+async function rebuildProjectFromStorage(projectRow, workspaceRow) {
+  if (!projectRow.storage_path) {
+    return null;
+  }
+
+  const { data: blob, error } = await supabase.storage.from('project-files').download(projectRow.storage_path);
+  if (error) {
+    throw error;
+  }
+
+  const parsedUpload = await parseSegmentBlob(blob, projectRow.original_file_name || `${projectRow.name}.xlsx`);
+  const rebuilt = createSessionFromUpload(parsedUpload);
+
+  return {
+    id: projectRow.id,
+    userId: projectRow.user_id,
+    workspaceId: workspaceRow.id,
+    workspaceName: workspaceRow.name,
+    projectName: workspaceRow.name,
+    fileName: projectRow.name,
+    originalFileName: projectRow.original_file_name,
+    header: rebuilt.header,
+    glossaryEntries: workspaceRow.glossary_entries ?? [],
+    tmEntries: workspaceRow.tm_entries ?? [],
+    currentSegmentId: rebuilt.currentSegmentId,
+    storagePath: projectRow.storage_path ?? null,
+    updatedAt: new Date(projectRow.updated_at).getTime(),
+    createdAt: new Date(projectRow.created_at).getTime(),
+    segments: rebuilt.segments,
+  };
+}
+
 export async function ensureProfile(user) {
   const { error } = await supabase.from('profiles').upsert(
     {
@@ -190,6 +224,13 @@ export async function loadProject(projectId) {
 
   if (workspaceError) {
     throw workspaceError;
+  }
+
+  if (!(segmentRows ?? []).length) {
+    const rebuiltProject = await rebuildProjectFromStorage(projectRow, workspaceRow);
+    if (rebuiltProject) {
+      return rebuiltProject;
+    }
   }
 
   return buildEditorProject(workspaceRow, projectRow, segmentRows ?? []);

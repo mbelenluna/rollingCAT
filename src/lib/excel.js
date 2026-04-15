@@ -120,6 +120,38 @@ function readWorkbook(file) {
   });
 }
 
+function workbookToSegmentFile(workbook, fileName = 'Imported file.xlsx') {
+  const rows = getWorksheetRows(workbook);
+  const { sourceIndex, targetIndex, header } = inferSegmentColumns(rows);
+  const dataRows = getDataRows(rows, true);
+  const segments = dataRows
+    .map((row, index) => {
+      const source = cleanCellValue(row[sourceIndex]);
+      const target = cleanCellValue(row[targetIndex]);
+
+      if (!source.trim() && !target.trim()) {
+        return null;
+      }
+
+      return {
+        id: crypto.randomUUID(),
+        number: index + 1,
+        source,
+        target,
+        status: target.trim() ? 'translated' : 'empty',
+        tmMatchPercent: target.trim() ? 100 : null,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    projectName: fileName.replace(/\.[^.]+$/, ''),
+    fileName,
+    header,
+    segments,
+  };
+}
+
 function getWorksheetRows(workbook) {
   const firstSheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[firstSheetName];
@@ -163,35 +195,23 @@ function parseGoogleSheetUrl(sheetUrl) {
 
 export async function parseSegmentFile(file) {
   const workbook = await readWorkbook(file);
-  const rows = getWorksheetRows(workbook);
-  const { sourceIndex, targetIndex, header } = inferSegmentColumns(rows);
-  const dataRows = getDataRows(rows, true);
-  const segments = dataRows
-    .map((row, index) => {
-      const source = cleanCellValue(row[sourceIndex]);
-      const target = cleanCellValue(row[targetIndex]);
+  return workbookToSegmentFile(workbook, file.name);
+}
 
-      if (!source.trim() && !target.trim()) {
-        return null;
+export function parseSegmentBlob(blob, fileName) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const workbook = XLSX.read(event.target?.result, { type: 'array' });
+        resolve(workbookToSegmentFile(workbook, fileName));
+      } catch (error) {
+        reject(error);
       }
-
-      return {
-        id: crypto.randomUUID(),
-        number: index + 1,
-        source,
-        target,
-        status: target.trim() ? 'translated' : 'empty',
-        tmMatchPercent: target.trim() ? 100 : null,
-      };
-    })
-    .filter(Boolean);
-
-  return {
-    projectName: file.name.replace(/\.[^.]+$/, ''),
-    fileName: file.name,
-    header,
-    segments,
-  };
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(blob);
+  });
 }
 
 export async function parseSimplePairsFile(file) {

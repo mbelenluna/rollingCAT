@@ -42,6 +42,11 @@ function classNames(...values) {
   return values.filter(Boolean).join(' ');
 }
 
+function upsertWorkspaceSummary(existingWorkspaces, nextWorkspace) {
+  const remainingWorkspaces = existingWorkspaces.filter((workspace) => workspace.id !== nextWorkspace.id);
+  return [nextWorkspace, ...remainingWorkspaces].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 function getNextIndex(segments, currentIndex, direction = 1, untranslatedOnly = false) {
   if (!segments.length) {
     return -1;
@@ -502,6 +507,11 @@ function App() {
       return undefined;
     }
 
+    if (activeProject.storagePath && !activeProject.segments.length) {
+      setSavedIndicator('Waiting for segments...');
+      return undefined;
+    }
+
     if (autosaveTimeoutRef.current) {
       window.clearTimeout(autosaveTimeoutRef.current);
     }
@@ -837,13 +847,14 @@ function App() {
 
     const originalsByFileId = Object.fromEntries(draftFiles.map((draftFile, index) => [draftFile.id, uploadedFiles[index]]));
     const workspaceSummary = await createCloudWorkspace({ workspace, files: draftFiles, originalsByFileId });
-    await refreshProjects();
+    setProjects((current) => upsertWorkspaceSummary(current, workspaceSummary));
     if (workspaceSummary.files[0]) {
       const project = await loadProject(workspaceSummary.files[0].id);
       setActiveProject(project);
       saveAppState({ lastOpenedProjectId: project.id });
       setScreen('editor');
     }
+    await refreshProjects();
     setHistoryState({});
     setToastMessage(uploadedFiles.length === 1 ? 'Workspace created' : `${uploadedFiles.length} files added to new workspace`);
   }
@@ -1046,68 +1057,99 @@ function App() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <button type="button" onClick={() => setScreen('home')} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                <Home className="h-4 w-4" />
-                Home
-              </button>
-              <button type="button" onClick={() => setScreen('dashboard')} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                <ArrowLeft className="h-4 w-4" />
-                Projects
-              </button>
-              <button type="button" onClick={handleUndo} disabled={!canUndo} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
-                <Undo2 className="h-4 w-4" />
-                Undo
-              </button>
-              <button type="button" onClick={handleRedo} disabled={!canRedo} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
-                <Redo2 className="h-4 w-4" />
-                Redo
-              </button>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                <Upload className="h-4 w-4" />
-                Upload Glossaries
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  multiple
-                  className="hidden"
-                  onChange={(event) => {
-                    handleAuxiliaryUpload(Array.from(event.target.files ?? []), 'glossary');
-                    event.target.value = '';
-                  }}
-                />
-              </label>
-              <button type="button" onClick={() => setIsGlossaryLinkDialogOpen(true)} className="inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 transition hover:bg-amber-100">
-                <Link2 className="h-4 w-4" />
-                Google Sheets Glossary
-              </button>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                <Upload className="h-4 w-4" />
-                Upload TM
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={(event) => {
-                    handleAuxiliaryUpload(event.target.files?.[0], 'tm');
-                    event.target.value = '';
-                  }}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() =>
-                  exportSegmentsToWorkbook({
-                    header: activeProject.header,
-                    segments: activeProject.segments,
-                    fileName: activeProject.originalFileName || `${activeProject.projectName}.xlsx`,
-                  })
-                }
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-              >
-                <FileSpreadsheet className="h-4 w-4" />
-                Export File
-              </button>
+            <div className="xl:min-w-[620px]">
+              <div className="grid gap-3 lg:grid-cols-[auto_auto_1fr]">
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setScreen('home')}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <Home className="h-4 w-4" />
+                    Home
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await refreshProjects();
+                      setScreen('dashboard');
+                    }}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Projects
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={handleUndo}
+                    disabled={!canUndo}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Undo2 className="h-4 w-4" />
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRedo}
+                    disabled={!canRedo}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Redo2 className="h-4 w-4" />
+                    Redo
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap justify-start gap-3 lg:justify-end">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                    <Upload className="h-4 w-4" />
+                    Upload Glossaries
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      multiple
+                      className="hidden"
+                      onChange={(event) => {
+                        handleAuxiliaryUpload(Array.from(event.target.files ?? []), 'glossary');
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                  <button type="button" onClick={() => setIsGlossaryLinkDialogOpen(true)} className="inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 transition hover:bg-amber-100">
+                    <Link2 className="h-4 w-4" />
+                    Google Sheets Glossary
+                  </button>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                    <Upload className="h-4 w-4" />
+                    Upload TM
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={(event) => {
+                        handleAuxiliaryUpload(event.target.files?.[0], 'tm');
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      exportSegmentsToWorkbook({
+                        header: activeProject.header,
+                        segments: activeProject.segments,
+                        fileName: activeProject.originalFileName || `${activeProject.projectName}.xlsx`,
+                      })
+                    }
+                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Export File
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </header>
