@@ -47,6 +47,31 @@ function upsertWorkspaceSummary(existingWorkspaces, nextWorkspace) {
   return [nextWorkspace, ...remainingWorkspaces].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+function buildWorkspaceSummaryFromDraft(workspace, files) {
+  const totalSegments = files.reduce((sum, file) => sum + file.segments.length, 0);
+  const translatedSegments = files.reduce((sum, file) => sum + file.segments.filter((segment) => segment.status === 'translated').length, 0);
+
+  return {
+    id: workspace.id,
+    name: workspace.name,
+    userId: workspace.userId,
+    updatedAt: workspace.updatedAt,
+    fileCount: files.length,
+    totalSegments,
+    translatedSegments,
+    files: files.map((file) => ({
+      id: file.id,
+      workspaceId: workspace.id,
+      fileName: file.fileName,
+      originalFileName: file.originalFileName,
+      updatedAt: file.updatedAt,
+      segmentCount: file.segments.length,
+      translatedCount: file.segments.filter((segment) => segment.status === 'translated').length,
+      storagePath: file.storagePath ?? null,
+    })),
+  };
+}
+
 function getNextIndex(segments, currentIndex, direction = 1, untranslatedOnly = false) {
   if (!segments.length) {
     return -1;
@@ -845,6 +870,9 @@ function App() {
       };
     });
 
+    const draftWorkspaceSummary = buildWorkspaceSummaryFromDraft(workspace, draftFiles);
+    setProjects((current) => upsertWorkspaceSummary(current, draftWorkspaceSummary));
+
     const originalsByFileId = Object.fromEntries(draftFiles.map((draftFile, index) => [draftFile.id, uploadedFiles[index]]));
     const workspaceSummary = await createCloudWorkspace({ workspace, files: draftFiles, originalsByFileId });
     setProjects((current) => upsertWorkspaceSummary(current, workspaceSummary));
@@ -854,7 +882,6 @@ function App() {
       saveAppState({ lastOpenedProjectId: project.id });
       setScreen('editor');
     }
-    await refreshProjects();
     setHistoryState({});
     setToastMessage(uploadedFiles.length === 1 ? 'Workspace created' : `${uploadedFiles.length} files added to new workspace`);
   }
@@ -1038,32 +1065,32 @@ function App() {
 
       <div className="mx-auto flex max-w-[1600px] flex-col gap-4">
         <header className="rounded-[28px] border border-white/70 bg-white/85 px-6 py-5 shadow-lg shadow-slate-300/20 backdrop-blur">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div>
+          <div className="grid gap-5 xl:grid-cols-[minmax(260px,0.9fr)_minmax(220px,0.55fr)_minmax(0,1.55fr)] xl:items-start">
+            <div className="min-w-0">
               <div className="text-sm font-medium uppercase tracking-[0.24em] text-slate-400">Project</div>
-              <div className="mt-1 text-2xl font-semibold text-slate-900">{activeProject.workspaceName}</div>
-              <div className="mt-1 text-sm text-slate-500">{activeProject.fileName}</div>
+              <div className="mt-2 truncate text-2xl font-semibold text-slate-900">{activeProject.workspaceName}</div>
+              <div className="mt-2 truncate text-sm text-slate-500">{activeProject.fileName}</div>
             </div>
 
-            <div className="flex-1 xl:max-w-xl">
-              <div className="flex items-center justify-between text-sm text-slate-600">
-                <span>
-                  {translatedCount} / {activeProject.segments.length} segments translated
-                </span>
-                <span>{progressPercent}%</span>
+            <div className="rounded-3xl border border-slate-200 bg-slate-50/80 px-4 py-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <div className="text-sm font-medium text-slate-600">
+                  {translatedCount} / {activeProject.segments.length} translated
+                </div>
+                <div className="text-lg font-semibold text-slate-900">{progressPercent}%</div>
               </div>
-              <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100">
+              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200">
                 <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 transition-all" style={{ width: `${progressPercent}%` }} />
               </div>
             </div>
 
-            <div className="xl:min-w-[620px]">
-              <div className="grid gap-3 lg:grid-cols-[auto_auto_1fr]">
+            <div className="flex flex-col gap-3 xl:items-end">
+              <div className="flex flex-wrap gap-3 xl:justify-end">
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
                     onClick={() => setScreen('home')}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                   >
                     <Home className="h-4 w-4" />
                     Home
@@ -1074,7 +1101,7 @@ function App() {
                       await refreshProjects();
                       setScreen('dashboard');
                     }}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                   >
                     <ArrowLeft className="h-4 w-4" />
                     Projects
@@ -1086,7 +1113,7 @@ function App() {
                     type="button"
                     onClick={handleUndo}
                     disabled={!canUndo}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Undo2 className="h-4 w-4" />
                     Undo
@@ -1095,15 +1122,16 @@ function App() {
                     type="button"
                     onClick={handleRedo}
                     disabled={!canRedo}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Redo2 className="h-4 w-4" />
                     Redo
                   </button>
                 </div>
+              </div>
 
-                <div className="flex flex-wrap justify-start gap-3 lg:justify-end">
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+              <div className="flex flex-wrap gap-3 xl:justify-end">
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     <Upload className="h-4 w-4" />
                     Upload Glossaries
                     <input
@@ -1117,11 +1145,11 @@ function App() {
                       }}
                     />
                   </label>
-                  <button type="button" onClick={() => setIsGlossaryLinkDialogOpen(true)} className="inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 transition hover:bg-amber-100">
+                  <button type="button" onClick={() => setIsGlossaryLinkDialogOpen(true)} className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 transition hover:bg-amber-100">
                     <Link2 className="h-4 w-4" />
                     Google Sheets Glossary
                   </button>
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     <Upload className="h-4 w-4" />
                     Upload TM
                     <input
@@ -1143,12 +1171,11 @@ function App() {
                         fileName: activeProject.originalFileName || `${activeProject.projectName}.xlsx`,
                       })
                     }
-                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
                   >
                     <FileSpreadsheet className="h-4 w-4" />
                     Export File
                   </button>
-                </div>
               </div>
             </div>
           </div>
