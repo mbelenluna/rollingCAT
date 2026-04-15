@@ -5,6 +5,9 @@ function cleanCellValue(value) {
   return cleanSpreadsheetCell(value);
 }
 
+const SOURCE_HEADER_KEYWORDS = ['source', 'source text', 'english', 'en', 'original', 'string', 'text'];
+const TARGET_HEADER_KEYWORDS = ['target', 'target text', 'translation', 'translated text', 'translated', 'zh', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko'];
+
 function looksLikeHeaderLabel(value) {
   const normalized = normalizeForLookup(value);
   return [
@@ -20,6 +23,74 @@ function looksLikeHeaderLabel(value) {
     'locale',
     'language',
   ].includes(normalized);
+}
+
+function isLikelyKeyColumn(value) {
+  const normalized = normalizeForLookup(value);
+  return ['key', 'keys', 'id', 'identifier', 'name', 'resource key'].includes(normalized);
+}
+
+function findHeaderIndex(row, keywords) {
+  return row.findIndex((cell) => {
+    const normalized = normalizeForLookup(cell);
+    return keywords.includes(normalized);
+  });
+}
+
+function firstNonEmptyCellIndex(row) {
+  return row.findIndex((cell) => cleanCellValue(cell));
+}
+
+function inferSegmentColumns(rows) {
+  const nonEmptyRows = rows.filter((row) => row.some((cell) => cleanCellValue(cell)));
+  const headerRow = nonEmptyRows[0] ?? [];
+  const dataRows = getDataRows(rows, true);
+  const firstDataRow = dataRows.find((row) => row.some((cell) => cleanCellValue(cell))) ?? [];
+
+  let sourceIndex = findHeaderIndex(headerRow, SOURCE_HEADER_KEYWORDS);
+  let targetIndex = findHeaderIndex(headerRow, TARGET_HEADER_KEYWORDS);
+
+  if (sourceIndex !== -1 && targetIndex !== -1 && sourceIndex !== targetIndex) {
+    return {
+      sourceIndex,
+      targetIndex,
+      header: [headerRow[sourceIndex] || 'Source', headerRow[targetIndex] || 'Target'],
+    };
+  }
+
+  const nonEmptyIndexes = headerRow
+    .map((cell, index) => (cleanCellValue(cell) ? index : -1))
+    .filter((index) => index >= 0);
+
+  const candidateIndexes = nonEmptyIndexes.filter((index) => !isLikelyKeyColumn(headerRow[index]));
+
+  if (candidateIndexes.length >= 2) {
+    return {
+      sourceIndex: candidateIndexes[0],
+      targetIndex: candidateIndexes[1],
+      header: [headerRow[candidateIndexes[0]] || 'Source', headerRow[candidateIndexes[1]] || 'Target'],
+    };
+  }
+
+  const firstDataIndexes = firstDataRow
+    .map((cell, index) => (cleanCellValue(cell) ? index : -1))
+    .filter((index) => index >= 0);
+
+  if (firstDataIndexes.length >= 2) {
+    return {
+      sourceIndex: firstDataIndexes[0],
+      targetIndex: firstDataIndexes[1],
+      header: [headerRow[firstDataIndexes[0]] || 'Source', headerRow[firstDataIndexes[1]] || 'Target'],
+    };
+  }
+
+  const fallbackSourceIndex = firstNonEmptyCellIndex(headerRow) >= 0 ? firstNonEmptyCellIndex(headerRow) : 0;
+
+  return {
+    sourceIndex: fallbackSourceIndex,
+    targetIndex: fallbackSourceIndex + 1,
+    header: [headerRow[fallbackSourceIndex] || 'Source', headerRow[fallbackSourceIndex + 1] || 'Target'],
+  };
 }
 
 function getDataRows(rows, assumeHeader = true) {
@@ -93,12 +164,12 @@ function parseGoogleSheetUrl(sheetUrl) {
 export async function parseSegmentFile(file) {
   const workbook = await readWorkbook(file);
   const rows = getWorksheetRows(workbook);
+  const { sourceIndex, targetIndex, header } = inferSegmentColumns(rows);
   const dataRows = getDataRows(rows, true);
-  const header = dataRows.length === rows.length ? ['Source', 'Target'] : rows[0]?.slice(0, 2) ?? ['Source', 'Target'];
   const segments = dataRows
     .map((row, index) => {
-      const source = cleanCellValue(row[0]);
-      const target = cleanCellValue(row[1]);
+      const source = cleanCellValue(row[sourceIndex]);
+      const target = cleanCellValue(row[targetIndex]);
 
       if (!source.trim() && !target.trim()) {
         return null;

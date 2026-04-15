@@ -279,10 +279,10 @@ function Dashboard({ user, projects, onOpenProject, onCreateProject, onSignOut, 
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {projects.length ? (
-            projects.map((project) => {
+          projects.map((project) => {
             const translatedCount = project.translatedSegments ?? 0;
-            const total = project.totalSegments ?? 1;
-            const percent = Math.round((translatedCount / total) * 100);
+            const total = project.totalSegments ?? 0;
+            const percent = total > 0 ? Math.round((translatedCount / total) * 100) : 0;
 
             return (
               <div
