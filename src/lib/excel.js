@@ -105,6 +105,10 @@ function getDataRows(rows, assumeHeader = true) {
   return firstCellLooksLikeHeader || secondCellLooksLikeHeader ? rows.slice(1) : rows;
 }
 
+function getSegmentDataRows(rows) {
+  return rows.length ? rows.slice(1) : rows;
+}
+
 function readWorkbook(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -123,7 +127,7 @@ function readWorkbook(file) {
 function workbookToSegmentFile(workbook, fileName = 'Imported file.xlsx') {
   const rows = getWorksheetRows(workbook);
   const { sourceIndex, targetIndex, header } = inferSegmentColumns(rows);
-  const dataRows = getDataRows(rows, true);
+  const dataRows = getSegmentDataRows(rows);
   const segments = dataRows
     .map((row, index) => {
       const source = cleanCellValue(row[sourceIndex]);

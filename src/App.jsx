@@ -1064,119 +1064,116 @@ function App() {
       ) : null}
 
       <div className="mx-auto flex max-w-[1600px] flex-col gap-4">
-        <header className="rounded-[28px] border border-white/70 bg-white/85 px-6 py-5 shadow-lg shadow-slate-300/20 backdrop-blur">
-          <div className="grid gap-5 xl:grid-cols-[minmax(260px,0.9fr)_minmax(220px,0.55fr)_minmax(0,1.55fr)] xl:items-start">
-            <div className="min-w-0">
-              <div className="text-sm font-medium uppercase tracking-[0.24em] text-slate-400">Project</div>
-              <div className="mt-2 truncate text-2xl font-semibold text-slate-900">{activeProject.workspaceName}</div>
-              <div className="mt-2 truncate text-sm text-slate-500">{activeProject.fileName}</div>
+        <header className="rounded-[28px] border border-white/70 bg-white/88 px-6 py-5 shadow-lg shadow-slate-300/20 backdrop-blur">
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div className="min-w-0">
+                <div className="text-sm font-medium uppercase tracking-[0.24em] text-slate-400">Project</div>
+                <div className="mt-2 truncate text-2xl font-semibold text-slate-900">{activeProject.workspaceName}</div>
+                <div className="mt-2 truncate text-sm text-slate-500">{activeProject.fileName}</div>
+              </div>
+
+              <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-slate-50/90 px-5 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Progress</div>
+                    <div className="mt-1 text-sm font-medium text-slate-700">
+                      {translatedCount} / {activeProject.segments.length} segments translated
+                    </div>
+                  </div>
+                  <div className="text-2xl font-semibold text-slate-900">{progressPercent}%</div>
+                </div>
+                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 transition-all" style={{ width: `${progressPercent}%` }} />
+                </div>
+              </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-slate-50/80 px-4 py-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <div className="text-sm font-medium text-slate-600">
-                  {translatedCount} / {activeProject.segments.length} translated
-                </div>
-                <div className="text-lg font-semibold text-slate-900">{progressPercent}%</div>
-              </div>
-              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200">
-                <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400 transition-all" style={{ width: `${progressPercent}%` }} />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 xl:items-end">
-              <div className="flex flex-wrap gap-3 xl:justify-end">
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setScreen('home')}
-                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <Home className="h-4 w-4" />
-                    Home
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await refreshProjects();
-                      setScreen('dashboard');
-                    }}
-                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Projects
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={handleUndo}
-                    disabled={!canUndo}
-                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Undo2 className="h-4 w-4" />
-                    Undo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRedo}
-                    disabled={!canRedo}
-                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Redo2 className="h-4 w-4" />
-                    Redo
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3 xl:justify-end">
-                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                    <Upload className="h-4 w-4" />
-                    Upload Glossaries
-                    <input
-                      type="file"
-                      accept=".xlsx,.xls"
-                      multiple
-                      className="hidden"
-                      onChange={(event) => {
-                        handleAuxiliaryUpload(Array.from(event.target.files ?? []), 'glossary');
-                        event.target.value = '';
-                      }}
-                    />
-                  </label>
-                  <button type="button" onClick={() => setIsGlossaryLinkDialogOpen(true)} className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 transition hover:bg-amber-100">
-                    <Link2 className="h-4 w-4" />
-                    Google Sheets Glossary
-                  </button>
-                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                    <Upload className="h-4 w-4" />
-                    Upload TM
-                    <input
-                      type="file"
-                      accept=".xlsx,.xls"
-                      className="hidden"
-                      onChange={(event) => {
-                        handleAuxiliaryUpload(event.target.files?.[0], 'tm');
-                        event.target.value = '';
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      exportSegmentsToWorkbook({
-                        header: activeProject.header,
-                        segments: activeProject.segments,
-                        fileName: activeProject.originalFileName || `${activeProject.projectName}.xlsx`,
-                      })
-                    }
-                    className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-                  >
-                    <FileSpreadsheet className="h-4 w-4" />
-                    Export File
-                  </button>
-              </div>
+            <div className="flex flex-wrap items-center gap-3 border-t border-slate-200/80 pt-4">
+              <button
+                type="button"
+                onClick={() => setScreen('home')}
+                className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <Home className="h-4 w-4" />
+                Home
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await refreshProjects();
+                  setScreen('dashboard');
+                }}
+                className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Projects
+              </button>
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={!canUndo}
+                className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Undo2 className="h-4 w-4" />
+                Undo
+              </button>
+              <button
+                type="button"
+                onClick={handleRedo}
+                disabled={!canRedo}
+                className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Redo2 className="h-4 w-4" />
+                Redo
+              </button>
+              <div className="hidden h-8 w-px bg-slate-200 xl:block" />
+              <label className="inline-flex h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                <Upload className="h-4 w-4" />
+                Upload Glossaries
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    handleAuxiliaryUpload(Array.from(event.target.files ?? []), 'glossary');
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+              <button type="button" onClick={() => setIsGlossaryLinkDialogOpen(true)} className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-amber-200 bg-amber-50 px-4 text-sm font-medium text-amber-800 transition hover:bg-amber-100">
+                <Link2 className="h-4 w-4" />
+                Google Sheets Glossary
+              </button>
+              <label className="inline-flex h-11 cursor-pointer items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                <Upload className="h-4 w-4" />
+                Upload TM
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={(event) => {
+                    handleAuxiliaryUpload(event.target.files?.[0], 'tm');
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={() =>
+                  exportSegmentsToWorkbook({
+                    header: activeProject.header,
+                    segments: activeProject.segments,
+                    fileName: activeProject.originalFileName || `${activeProject.projectName}.xlsx`,
+                  })
+                }
+                className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-2xl bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-800"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Export File
+              </button>
             </div>
           </div>
         </header>
