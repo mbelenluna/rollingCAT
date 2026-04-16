@@ -1202,8 +1202,10 @@ function App() {
       setSavedIndicator('Saved');
       setToastMessage('Segment saved');
     } catch (error) {
+      console.error('[saveCurrentSegment] Supabase save failed:', error);
       setSavedIndicator('Saved locally');
-      setToastMessage(error instanceof Error ? `Saved locally. ${error.message}` : 'Saved locally. Could not sync right now.');
+      const msg = error?.message ?? (typeof error === 'string' ? error : null);
+      setToastMessage(msg ? `Saved locally. ${msg}` : 'Saved locally. Could not sync right now.');
     }
   }
 
