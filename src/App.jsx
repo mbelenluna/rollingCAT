@@ -123,16 +123,32 @@ function mergeProjectWithDraft(project, draft) {
     return project;
   }
 
-  const draftSegments = new Map((draft.segments ?? []).map((segment) => [segment.id, segment]));
+  const draftSegmentsByNumber = new Map((draft.segments ?? []).map((segment) => [segment.number, segment]));
+  const draftCurrentSegment = (draft.segments ?? []).find((segment) => segment.id === draft.currentSegmentId);
+
+  const mergedSegments = project.segments.map((segment) => {
+    const draftSegment = draftSegmentsByNumber.get(segment.number);
+    return draftSegment
+      ? {
+          ...segment,
+          target: draftSegment.target,
+          status: draftSegment.status,
+          tmMatchPercent: draftSegment.tmMatchPercent,
+        }
+      : segment;
+  });
+
+  const resolvedCurrentSegmentId =
+    mergedSegments.find((segment) => segment.number === draftCurrentSegment?.number)?.id ??
+    mergedSegments.find((segment) => segment.id === project.currentSegmentId)?.id ??
+    mergedSegments[0]?.id ??
+    null;
 
   return {
     ...project,
-    currentSegmentId: draft.currentSegmentId ?? project.currentSegmentId,
+    currentSegmentId: resolvedCurrentSegmentId,
     updatedAt: Math.max(project.updatedAt ?? 0, draft.updatedAt ?? 0),
-    segments: project.segments.map((segment) => {
-      const draftSegment = draftSegments.get(segment.id);
-      return draftSegment ? { ...segment, ...draftSegment } : segment;
-    }),
+    segments: mergedSegments,
   };
 }
 
@@ -603,7 +619,8 @@ function App() {
       return -1;
     }
 
-    return activeProject.segments.findIndex((segment) => segment.id === activeProject.currentSegmentId);
+    const foundIndex = activeProject.segments.findIndex((segment) => segment.id === activeProject.currentSegmentId);
+    return foundIndex >= 0 ? foundIndex : 0;
   }, [activeProject]);
 
   const activeSegment = activeIndex >= 0 ? activeProject?.segments?.[activeIndex] : null;
