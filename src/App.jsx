@@ -1084,13 +1084,30 @@ function App() {
     } catch {
       // Keep navigation responsive even if sync fails.
     }
-    const project = await loadProject(projectId);
+
+    let project;
+    try {
+      project = await loadProject(projectId);
+    } catch {
+      // Remote load failed — attempt to recover from the local draft.
+      const draft = loadActiveProjectDraft();
+      if (draft?.id === projectId) {
+        project = draft;
+      }
+    }
     if (!project) {
       return;
     }
 
-    setActiveProject(project);
-    saveActiveProjectDraft(project);
+    // Merge with the local draft so that any edits not yet synced to Supabase are preserved.
+    // mergeProjectWithDraft is a no-op when the draft id does not match the opened project.
+    const draft = loadActiveProjectDraft();
+    const finalProject = mergeProjectWithDraft(project, draft);
+
+    // Update the ref synchronously so navigation guards see the correct state immediately.
+    activeProjectRef.current = finalProject;
+    setActiveProject(finalProject);
+    saveActiveProjectDraft(finalProject);
     setHistoryState({});
     setScreen('editor');
     saveAppState({ lastOpenedProjectId: project.id });
@@ -1154,7 +1171,7 @@ function App() {
     }
   }
 
-  function saveCurrentSegment({ advance = true } = {}) {
+  async function saveCurrentSegment({ advance = true } = {}) {
     if (!activeProject || !activeSegment) {
       return;
     }
@@ -1168,10 +1185,26 @@ function App() {
       currentSegmentId: nextSegment?.id ?? savedProject.currentSegmentId,
     };
 
+    // Update the ref immediately so any concurrent navigation reads the correct version.
+    activeProjectRef.current = updatedProject;
     setActiveProject(updatedProject);
     saveActiveProjectDraft(updatedProject);
-    setToastMessage('Segment saved');
-    setSavedIndicator('Saved');
+
+    // Cancel any pending autosave and persist to Supabase right now.
+    if (autosaveTimeoutRef.current) {
+      window.clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
+
+    setSavedIndicator('Saving...');
+    try {
+      await flushProjectSave(updatedProject);
+      setSavedIndicator('Saved');
+      setToastMessage('Segment saved');
+    } catch (error) {
+      setSavedIndicator('Saved locally');
+      setToastMessage(error instanceof Error ? `Saved locally. ${error.message}` : 'Saved locally. Could not sync right now.');
+    }
   }
 
   if (loading) {

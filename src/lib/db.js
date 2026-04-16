@@ -227,6 +227,14 @@ export async function loadProject(projectId) {
   }
 
   if (!(segmentRows ?? []).length) {
+    // Only fall back to rebuilding from the uploaded file when the project truly has no
+    // segments yet (e.g. first open after creation before any upsert runs).  If the
+    // project row claims there are saved segments but none came back from the DB, something
+    // transient went wrong (session hiccup, RLS, etc.).  Throw so the caller can fall back
+    // to the local draft rather than silently replacing all translations with blank originals.
+    if ((projectRow.segment_count ?? 0) > 0) {
+      throw new Error('Project segments could not be loaded. Please try again.');
+    }
     const rebuiltProject = await rebuildProjectFromStorage(projectRow, workspaceRow);
     if (rebuiltProject) {
       return rebuiltProject;
