@@ -38,6 +38,8 @@ import { createProjectFromUpload, mergeGlossaryEntries, mergeTmEntries, recomput
 import { findTmMatches } from './lib/tm';
 import { getSessionUser, loadAppState, onAuthStateChange, requestPasswordReset, saveAppState, signInWithEmail, signOutUser, signUpWithEmail } from './lib/auth';
 
+const ACTIVE_PROJECT_DRAFT_KEY = 'rollingcat-active-project-draft';
+
 function classNames(...values) {
   return values.filter(Boolean).join(' ');
 }
@@ -85,6 +87,53 @@ function getNextIndex(segments, currentIndex, direction = 1, untranslatedOnly = 
   }
 
   return Math.min(Math.max(currentIndex + step, 0), segments.length - 1);
+}
+
+function loadActiveProjectDraft() {
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_PROJECT_DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveActiveProjectDraft(project) {
+  if (!project) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(ACTIVE_PROJECT_DRAFT_KEY, JSON.stringify(project));
+  } catch {
+    // Ignore local draft persistence failures.
+  }
+}
+
+function clearActiveProjectDraft() {
+  try {
+    window.localStorage.removeItem(ACTIVE_PROJECT_DRAFT_KEY);
+  } catch {
+    // Ignore local draft cleanup failures.
+  }
+}
+
+function mergeProjectWithDraft(project, draft) {
+  if (!project || !draft || project.id !== draft.id) {
+    return project;
+  }
+
+  const draftSegments = new Map((draft.segments ?? []).map((segment) => [segment.id, segment]));
+
+  return {
+    ...project,
+    currentSegmentId: draft.currentSegmentId ?? project.currentSegmentId,
+    updatedAt: Math.max(project.updatedAt ?? 0, draft.updatedAt ?? 0),
+    segments: project.segments.map((segment) => {
+      const draftSegment = draftSegments.get(segment.id);
+      return draftSegment ? { ...segment, ...draftSegment } : segment;
+    }),
+  };
 }
 
 function Toast({ message }) {
@@ -396,6 +445,36 @@ function App() {
   const createProjectInputRef = useRef(null);
   const segmentRefs = useRef(new Map());
   const autosaveTimeoutRef = useRef(null);
+  const activeProjectRef = useRef(null);
+  const currentUserRef = useRef(null);
+  const screenRef = useRef('home');
+
+  async function flushProjectSave(project, options = {}) {
+    const { remote = true } = options;
+    if (!project) {
+      return;
+    }
+
+    saveActiveProjectDraft(project);
+
+    if (!remote || !currentUserRef.current || (project.storagePath && !project.segments.length)) {
+      return;
+    }
+
+    await saveProject(project);
+  }
+
+  useEffect(() => {
+    activeProjectRef.current = activeProject;
+  }, [activeProject]);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  useEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
 
   useEffect(() => {
     let mounted = true;
@@ -421,11 +500,17 @@ function App() {
         if (appState.lastOpenedProjectId) {
           try {
             const project = await loadProject(appState.lastOpenedProjectId);
+            const draft = loadActiveProjectDraft();
             if (mounted) {
-              setActiveProject(project);
+              setActiveProject(mergeProjectWithDraft(project, draft));
+              setScreen('editor');
             }
           } catch {
-            // Ignore missing or unauthorized last-opened project.
+            const draft = loadActiveProjectDraft();
+            if (mounted && draft?.id === appState.lastOpenedProjectId) {
+              setActiveProject(draft);
+              setScreen('editor');
+            }
           }
         }
       }
@@ -439,14 +524,29 @@ function App() {
 
     const {
       data: { subscription },
-    } = onAuthStateChange(async (user) => {
+    } = onAuthStateChange(async (event, user) => {
       if (!mounted) {
         return;
       }
 
       if (!user) {
+        if (event !== 'SIGNED_OUT') {
+          const recoveredUser = await getSessionUser();
+          if (recoveredUser) {
+            const userProjects = await listWorkspacesByUser();
+            if (!mounted) {
+              return;
+            }
+
+            setCurrentUser(recoveredUser);
+            setProjects(userProjects);
+            return;
+          }
+        }
+
         setCurrentUser(null);
         setProjects([]);
+        clearActiveProjectDraft();
         setActiveProject(null);
         setScreen('home');
         return;
@@ -460,7 +560,7 @@ function App() {
 
       setCurrentUser(user);
       setProjects(userProjects);
-      if (screen !== 'editor') {
+      if (screenRef.current !== 'editor') {
         setScreen('dashboard');
       }
     });
@@ -532,6 +632,8 @@ function App() {
       return undefined;
     }
 
+    saveActiveProjectDraft(activeProject);
+
     if (activeProject.storagePath && !activeProject.segments.length) {
       setSavedIndicator('Waiting for segments...');
       return undefined;
@@ -543,7 +645,7 @@ function App() {
 
     autosaveTimeoutRef.current = window.setTimeout(async () => {
       setSavedIndicator('Saving...');
-      await saveProject(activeProject);
+      await flushProjectSave(activeProject);
       if (currentUser) {
         const refreshedProjects = await listWorkspacesByUser();
         setProjects(refreshedProjects);
@@ -557,6 +659,45 @@ function App() {
       }
     };
   }, [activeProject, currentUser, screen]);
+
+  useEffect(() => {
+    async function persistBeforeBackground() {
+      const project = activeProjectRef.current;
+      if (!project || screenRef.current !== 'editor') {
+        return;
+      }
+
+      if (autosaveTimeoutRef.current) {
+        window.clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = null;
+      }
+
+      setSavedIndicator('Saving...');
+      await flushProjectSave(project, { remote: document.visibilityState !== 'hidden' });
+      setSavedIndicator('Saved');
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        void persistBeforeBackground();
+      }
+    }
+
+    function handlePageHide() {
+      const project = activeProjectRef.current;
+      if (project && screenRef.current === 'editor') {
+        saveActiveProjectDraft(project);
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, []);
 
   function updateProjectState(updater) {
     setActiveProject((current) => {
@@ -827,6 +968,7 @@ function App() {
   async function handleSignOut() {
     await signOutUser();
     saveAppState({ lastOpenedProjectId: null });
+    clearActiveProjectDraft();
     setCurrentUser(null);
     setProjects([]);
     setActiveProject(null);
@@ -879,6 +1021,7 @@ function App() {
     if (workspaceSummary.files[0]) {
       const project = await loadProject(workspaceSummary.files[0].id);
       setActiveProject(project);
+      saveActiveProjectDraft(project);
       saveAppState({ lastOpenedProjectId: project.id });
       setScreen('editor');
     }
@@ -897,6 +1040,7 @@ function App() {
     }
 
     setActiveProject(project);
+    saveActiveProjectDraft(project);
     setHistoryState({});
     setScreen('editor');
     saveAppState({ lastOpenedProjectId: project.id });
@@ -910,6 +1054,7 @@ function App() {
     try {
       await deleteWorkspace(projectSummary.id, projectSummary.files);
       if (activeProject?.workspaceId === projectSummary.id) {
+        clearActiveProjectDraft();
         setActiveProject(null);
       }
       await refreshProjects();
@@ -974,6 +1119,7 @@ function App() {
     };
 
     setActiveProject(updatedProject);
+    saveActiveProjectDraft(updatedProject);
     setToastMessage('Segment saved');
     setSavedIndicator('Saved');
   }
