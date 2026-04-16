@@ -494,8 +494,13 @@ function App() {
     }
 
     setSavedIndicator('Saving...');
-    await flushProjectSave(project, { remote });
-    setSavedIndicator('Saved');
+    try {
+      await flushProjectSave(project, { remote });
+      setSavedIndicator('Saved');
+    } catch (error) {
+      setSavedIndicator('Saved locally');
+      setToastMessage(error instanceof Error ? `Saved locally. ${error.message}` : 'Saved locally. Could not sync project right now.');
+    }
   }
 
   useEffect(() => {
@@ -1001,7 +1006,11 @@ function App() {
   }
 
   async function handleSignOut() {
-    await persistEditorBeforeNavigation();
+    try {
+      await persistEditorBeforeNavigation();
+    } catch {
+      // Navigation should still work even if sync fails.
+    }
     await signOutUser();
     saveAppState({ lastOpenedProjectId: null });
     clearActiveProjectDraft();
@@ -1070,7 +1079,11 @@ function App() {
       return;
     }
 
-    await persistEditorBeforeNavigation();
+    try {
+      await persistEditorBeforeNavigation();
+    } catch {
+      // Keep navigation responsive even if sync fails.
+    }
     const project = await loadProject(projectId);
     if (!project) {
       return;
@@ -1276,8 +1289,11 @@ function App() {
               <button
                 type="button"
                 onClick={async () => {
-                  await persistEditorBeforeNavigation();
-                  setScreen('home');
+                  try {
+                    await persistEditorBeforeNavigation();
+                  } finally {
+                    setScreen('home');
+                  }
                 }}
                 className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
@@ -1287,9 +1303,12 @@ function App() {
               <button
                 type="button"
                 onClick={async () => {
-                  await persistEditorBeforeNavigation();
-                  await refreshProjects();
-                  setScreen('dashboard');
+                  try {
+                    await persistEditorBeforeNavigation();
+                    await refreshProjects();
+                  } finally {
+                    setScreen('dashboard');
+                  }
                 }}
                 className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
