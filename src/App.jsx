@@ -464,6 +464,24 @@ function App() {
     await saveProject(project);
   }
 
+  async function persistEditorBeforeNavigation(options = {}) {
+    const { remote = true } = options;
+    const project = activeProjectRef.current;
+
+    if (!project || screenRef.current !== 'editor') {
+      return;
+    }
+
+    if (autosaveTimeoutRef.current) {
+      window.clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
+
+    setSavedIndicator('Saving...');
+    await flushProjectSave(project, { remote });
+    setSavedIndicator('Saved');
+  }
+
   useEffect(() => {
     activeProjectRef.current = activeProject;
   }, [activeProject]);
@@ -966,6 +984,7 @@ function App() {
   }
 
   async function handleSignOut() {
+    await persistEditorBeforeNavigation();
     await signOutUser();
     saveAppState({ lastOpenedProjectId: null });
     clearActiveProjectDraft();
@@ -1034,6 +1053,7 @@ function App() {
       return;
     }
 
+    await persistEditorBeforeNavigation();
     const project = await loadProject(projectId);
     if (!project) {
       return;
@@ -1238,7 +1258,10 @@ function App() {
             <div className="flex flex-wrap items-center gap-3 border-t border-slate-200/80 pt-4">
               <button
                 type="button"
-                onClick={() => setScreen('home')}
+                onClick={async () => {
+                  await persistEditorBeforeNavigation();
+                  setScreen('home');
+                }}
                 className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 <Home className="h-4 w-4" />
@@ -1247,6 +1270,7 @@ function App() {
               <button
                 type="button"
                 onClick={async () => {
+                  await persistEditorBeforeNavigation();
                   await refreshProjects();
                   setScreen('dashboard');
                 }}
