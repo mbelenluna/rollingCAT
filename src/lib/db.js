@@ -31,14 +31,19 @@ function fileToProjectRow(file) {
   };
 }
 
+const VALID_DB_STATUSES = new Set(['pending', 'translated', 'autofilled', 'fuzzy', 'empty']);
+
 function segmentToRow(fileId, segment) {
+  // Guard against any status value that is not in the DB check constraint.
+  // 'autofilled' is valid after the schema migration; unknown values fall back to 'fuzzy'.
+  const status = VALID_DB_STATUSES.has(segment.status) ? segment.status : 'fuzzy';
   return {
     id: segment.id,
     project_id: fileId,
     segment_number: segment.number,
     source_text: segment.source,
     target_text: segment.target ?? '',
-    status: segment.status,
+    status,
     tm_match_percent: segment.tmMatchPercent ?? null,
     updated_at: new Date().toISOString(),
   };
