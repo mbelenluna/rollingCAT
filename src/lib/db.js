@@ -1,7 +1,6 @@
 import { supabase } from './supabase';
 import { createSessionFromUpload } from './session';
 import { parseSegmentBlob } from './excel';
-import { computeFileWordCounts, computeBatchWordCounts } from './wordcount';
 
 function workspaceToRow(workspace) {
   return {
@@ -29,11 +28,6 @@ function fileToProjectRow(file) {
     translated_count: file.segments.filter((segment) => segment.status === 'translated').length,
     storage_path: file.storagePath ?? null,
     updated_at: new Date(file.updatedAt ?? Date.now()).toISOString(),
-    total_word_count: file.totalWordCount ?? 0,
-    new_word_count: file.newWordCount ?? 0,
-    repetition_word_count: file.repetitionWordCount ?? 0,
-    batch_new_word_count: file.batchNewWordCount ?? 0,
-    batch_repetition_word_count: file.batchRepetitionWordCount ?? 0,
   };
 }
 
@@ -58,11 +52,6 @@ function segmentToRow(fileId, segment) {
 function buildWorkspaceSummary(workspaceRow, projectRows) {
   const totalSegments = projectRows.reduce((sum, row) => sum + (row.segment_count ?? 0), 0);
   const translatedSegments = projectRows.reduce((sum, row) => sum + (row.translated_count ?? 0), 0);
-  const totalWordCount = projectRows.reduce((sum, row) => sum + (row.total_word_count ?? 0), 0);
-  const newWordCount = projectRows.reduce((sum, row) => sum + (row.new_word_count ?? 0), 0);
-  const repetitionWordCount = projectRows.reduce((sum, row) => sum + (row.repetition_word_count ?? 0), 0);
-  const batchNewWordCount = projectRows.reduce((sum, row) => sum + (row.batch_new_word_count ?? 0), 0);
-  const batchRepetitionWordCount = projectRows.reduce((sum, row) => sum + (row.batch_repetition_word_count ?? 0), 0);
 
   return {
     id: workspaceRow.id,
@@ -72,11 +61,6 @@ function buildWorkspaceSummary(workspaceRow, projectRows) {
     fileCount: projectRows.length,
     totalSegments,
     translatedSegments,
-    totalWordCount,
-    newWordCount,
-    repetitionWordCount,
-    batchNewWordCount,
-    batchRepetitionWordCount,
     files: projectRows
       .map((row) => ({
         id: row.id,
@@ -87,11 +71,6 @@ function buildWorkspaceSummary(workspaceRow, projectRows) {
         segmentCount: row.segment_count ?? 0,
         translatedCount: row.translated_count ?? 0,
         storagePath: row.storage_path ?? null,
-        totalWordCount: row.total_word_count ?? 0,
-        newWordCount: row.new_word_count ?? 0,
-        repetitionWordCount: row.repetition_word_count ?? 0,
-        batchNewWordCount: row.batch_new_word_count ?? 0,
-        batchRepetitionWordCount: row.batch_repetition_word_count ?? 0,
       }))
       .sort((a, b) => a.fileName.localeCompare(b.fileName, undefined, { sensitivity: 'base' })),
   };
@@ -113,11 +92,6 @@ function buildEditorProject(workspaceRow, projectRow, segmentRows) {
     storagePath: projectRow.storage_path ?? null,
     updatedAt: new Date(projectRow.updated_at).getTime(),
     createdAt: new Date(projectRow.created_at).getTime(),
-    totalWordCount: projectRow.total_word_count ?? 0,
-    newWordCount: projectRow.new_word_count ?? 0,
-    repetitionWordCount: projectRow.repetition_word_count ?? 0,
-    batchNewWordCount: projectRow.batch_new_word_count ?? 0,
-    batchRepetitionWordCount: projectRow.batch_repetition_word_count ?? 0,
     segments: [...segmentRows]
       .sort((a, b) => a.segment_number - b.segment_number)
       .map((row) => ({
@@ -182,7 +156,7 @@ export async function ensureProfile(user) {
 export async function listWorkspacesByUser() {
   const [{ data: workspaces, error: workspaceError }, { data: projects, error: projectError }] = await Promise.all([
     supabase.from('workspaces').select('id, user_id, name, updated_at').order('updated_at', { ascending: false }),
-    supabase.from('projects').select('id, workspace_id, name, original_file_name, segment_count, translated_count, updated_at, storage_path, total_word_count, new_word_count, repetition_word_count, batch_new_word_count, batch_repetition_word_count'),
+    supabase.from('projects').select('id, workspace_id, name, original_file_name, segment_count, translated_count, updated_at, storage_path'),
   ]);
 
   if (workspaceError) {
@@ -210,7 +184,7 @@ export async function loadWorkspace(workspaceId) {
       .single(),
     supabase
       .from('projects')
-      .select('id, workspace_id, name, original_file_name, segment_count, translated_count, updated_at, storage_path, total_word_count, new_word_count, repetition_word_count, batch_new_word_count, batch_repetition_word_count')
+      .select('id, workspace_id, name, original_file_name, segment_count, translated_count, updated_at, storage_path')
       .eq('workspace_id', workspaceId)
       .order('name', { ascending: true }),
   ]);
@@ -230,7 +204,7 @@ export async function loadProject(projectId) {
   const [{ data: projectRow, error: projectError }, { data: segmentRows, error: segmentError }] = await Promise.all([
     supabase
       .from('projects')
-      .select('id, user_id, workspace_id, name, original_file_name, header, current_segment_id, storage_path, created_at, updated_at, total_word_count, new_word_count, repetition_word_count, batch_new_word_count, batch_repetition_word_count')
+      .select('id, user_id, workspace_id, name, original_file_name, header, current_segment_id, storage_path, created_at, updated_at')
       .eq('id', projectId)
       .single(),
     supabase
@@ -286,12 +260,8 @@ export async function createCloudWorkspace({ workspace, files, originalsByFileId
     throw workspaceError;
   }
 
-  // Compute per-file and batch word counts so they are stored on first insert.
-  const perFileWordCounts = files.map((file) => computeFileWordCounts(file.segments));
-  const batchWordCounts = computeBatchWordCounts(files);
-
   const fileRows = [];
-  for (const [index, file] of files.entries()) {
+  for (const file of files) {
     const originalFile = originalsByFileId[file.id];
     let storagePath = null;
 
@@ -313,9 +283,6 @@ export async function createCloudWorkspace({ workspace, files, originalsByFileId
         ...file,
         workspaceId: workspace.id,
         storagePath,
-        ...perFileWordCounts[index],
-        batchNewWordCount: batchWordCounts[index].batchNewWordCount,
-        batchRepetitionWordCount: batchWordCounts[index].batchRepetitionWordCount,
       }),
     );
   }
