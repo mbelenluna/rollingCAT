@@ -1508,10 +1508,13 @@ function App() {
 
                 <div className="grid gap-4 xl:grid-cols-2">
                   <div className="rounded-3xl border border-slate-200 bg-white p-4">
-                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    <div className="mb-1 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
                       <Languages className="h-4 w-4" />
                       Glossary Matches
                     </div>
+                    <p className="mb-3 text-xs leading-5 text-slate-400">
+                      For reference only — use your best judgement and always check the shared reference materials before applying a term.
+                    </p>
                     <div className="space-y-3">
                       {glossaryMatches.length ? (
                         glossaryMatches.map((entry) => (
